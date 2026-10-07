@@ -10,7 +10,7 @@ FreeFlow is a macOS app built with Swift and the macOS SDK. To build and test lo
 
 - A Mac running macOS 13.0 or later
 - Xcode Command Line Tools (`xcode-select --install`)
-- [create-dmg](https://github.com/sindresorhus/create-dmg) (only needed for producing disk images)
+- Producing disk images additionally requires Homebrew's `create-dmg` and `fileicon` packages.
 - A free [Groq API key](https://groq.com/) (or another OpenAI-compatible provider) to exercise end-to-end dictation
 
 ## Getting the Source
@@ -36,11 +36,19 @@ FreeFlow is a macOS app built with Swift and the macOS SDK. To build and test lo
 ## Building
 
 ```bash
-make            # builds FreeFlow.app into build/
+make            # builds build/FreeFlow Dev.app
 make run        # builds and opens the app
 ```
 
-The Makefile builds a `.app` bundle under `build/` using `swiftc` against the macOS SDK. It codesigns with a local "FreeFlow Dev" identity for development builds.
+The Makefile builds a `.app` bundle under `build/` using `swiftc` against the macOS SDK. It signs development builds with a local "FreeFlow Dev" identity. That identity must exist in your keychain; the Makefile does not fall back automatically if it is missing.
+
+For a compile-and-bundle check without that identity, explicitly request ad-hoc signing:
+
+```bash
+make ARCH="$(uname -m)" CODESIGN_IDENTITY=-
+```
+
+Ad-hoc signing is useful for build checks, but rebuilding or changing signing identity can invalidate macOS permission grants. For repeated interactive testing, use a consistent local code-signing identity and app path. Check the selected build and its signature before troubleshooting permissions. Do not reset permissions as part of automated tests.
 
 To produce a universal (Apple Silicon + Intel) binary:
 
@@ -51,12 +59,17 @@ make ARCH=universal
 ## Testing
 
 ```bash
-make test
+make check
+git diff --check
 ```
 
-The test runner is a standalone Swift executable built from `Sources/AppContextService.swift`, `Sources/LLMAPITransport.swift`, `Sources/ModelConfiguration.swift`, and `Tests/AppContextServiceTests.swift`. It runs without a simulator or test host.
+`make check` type-checks production Swift, compiles and runs the standalone tests, validates plist files, and checks shell scripts and YAML. It requires no simulator, test host, API key, or live provider. A full app build is normally unnecessary.
 
-When adding features or fixing bugs, add or update tests in `Tests/` that cover the changed behavior. If your change touches code outside the currently tested files, extend the Makefile's `$(TEST_RUNNER)` target to include the new source files.
+Add focused regression tests in `Tests/` for deterministic bug fixes. List any additional production files needed by tests in the Makefile's `TEST_PRODUCTION_SOURCES`. Production app sources are discovered automatically.
+
+Use synthetic fixtures and mocked or local dependencies. Never include real audio, transcripts, screenshots, clipboard contents, app context, credentials, or private provider URLs in tests or reports.
+
+Changes involving microphone capture, global shortcuts, Accessibility, Screen Recording, clipboard/paste behavior, updates, or the signed app need documented manual verification before merge. Automated checks alone do not verify these flows. If that testing is pending, open a draft PR with exact steps and expected results. Do not trigger permission prompts or change system permissions without the tester's approval.
 
 ## Development Conventions
 
@@ -78,15 +91,9 @@ Write clear, concise commit messages in the imperative mood (e.g., "Add preserve
 - Prefer small, focused changes that address a single issue or feature.
 - Avoid unrelated refactors mixed into a feature or fix PR — if a refactor is needed, open a separate PR.
 
-### Changelog
+### Releases
 
-Add an entry under the `## [Unreleased]` section in [`CHANGELOG.md`](CHANGELOG.md) under the appropriate subsection:
-
-- **Added** — new user-visible features or improvements.
-- **Improved** — enhancements to existing behavior.
-- **Fixed** — bug fixes.
-
-Follow the existing entry style (one line per change, sentence case, no trailing period).
+Do not change versions, release notes, signing, notarization, or release workflows during ordinary maintenance. Coordinate release work with a maintainer. See [AGENTS.md](AGENTS.md) for the repository's verification and privacy requirements.
 
 ## Submitting Changes
 
@@ -96,7 +103,8 @@ Follow the existing entry style (one line per change, sentence case, no trailing
    - **Motivation** — why the change is needed (link the issue if one exists, e.g., `Closes #123`).
    - **Behavior** — what changes for users, especially anything that differs from the previous behavior.
    - **Changes** — the files touched and the nature of each change.
-   - **Test plan** — how you verified the change works (manual testing steps, `make test` output, edge cases checked).
+   - **Test plan** — how you verified the change works (manual testing steps, `make check` results, edge cases checked).
+   - **Risk** — privacy, permissions, migration, and release impact, including when none applies.
 3. Keep PRs focused and small. An automated labeler flags PRs over 1000 lines with a reminder that large PRs may be rejected — if your change is large, consider splitting it into multiple PRs.
 4. A bot ([CodeRabbit](https://coderabbit.ai)) posts an automated review on new PRs. Addressing its actionable comments helps move the review forward.
 5. Be responsive to feedback from maintainers and other contributors.
