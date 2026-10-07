@@ -45,6 +45,7 @@ The Makefile builds a `.app` bundle under `build/` using `swiftc` against the ma
 For a compile-and-bundle check without that identity, explicitly request ad-hoc signing:
 
 ```bash
+make clean
 make ARCH="$(uname -m)" CODESIGN_IDENTITY=-
 ```
 
